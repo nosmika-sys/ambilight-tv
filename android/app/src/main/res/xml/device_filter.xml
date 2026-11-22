@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CH340 / CH9102 (WCH) -->
+    <usb-device vendor-id="6790" />
+    <!-- CP2102 / CP2104 (Silicon Labs) -->
+    <usb-device vendor-id="4292" />
+    <!-- FTDI -->
+    <usb-device vendor-id="1027" />
+    <!-- ESP32-S2/S3/C3 USB nativa (Espressif) -->
+    <usb-device vendor-id="12346" />
+</resources>
