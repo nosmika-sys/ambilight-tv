@@ -145,6 +145,16 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
             } finally {
                 image.close()
             }
+            // Limita as capturas: desliga a superficie e religa depois do intervalo.
+            // Sem superficie a TV nao gasta GPU espelhando a tela (alivia muito durante video).
+            val vd = virtualDisplay
+            val cfgNow = config
+            if (vd != null && cfgNow != null && running) {
+                vd.surface = null
+                handler.postDelayed({
+                    if (running) try { virtualDisplay?.surface = reader.surface } catch (_: Exception) { }
+                }, 1000L / cfgNow.captureFps)
+            }
         }, handler)
 
         virtualDisplay = mp.createVirtualDisplay(
@@ -368,7 +378,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "ambilight"
         private const val NOTIF_ID = 1
-        private const val CAPTURE_WIDTH = 160
+        private const val CAPTURE_WIDTH = 64
 
         @Volatile var isRunning = false
             private set

@@ -37,6 +37,7 @@ class Config(
     val autoStart: Boolean,
     val testMode: Boolean,
     val colorOrder: Int,   // indice em COLOR_ORDERS: ordem em que R, G e B sao enviados
+    val captureFps: Int,   // capturas de tela por segundo (menor = mais leve para a TV)
 ) {
     val mapping: Mapping = buildMapping()
     val gammaLut: IntArray = IntArray(256) { i ->
@@ -111,6 +112,7 @@ class Config(
         const val K_AUTOSTART = "autostart"
         const val K_TEST = "test_mode"
         const val K_ORDER = "color_order"
+        const val K_CAPFPS = "capture_fps"
 
         const val PREFS = "ambilight"
         /** Ordem dos canais enviados. Corrige a fita sem regravar o ESP32. */
@@ -121,7 +123,7 @@ class Config(
         val DEFAULTS = mapOf(
             K_LEFT to 36, K_TOP to 64, K_RIGHT to 36, K_BOTTOM to 64, K_GAP to 0,
             K_OFFSET to 0, K_BRIGHT to 100, K_SAT to 120, K_SMOOTH to 40,
-            K_DEPTH to 12, K_FPS to 30, K_GAMMA to 18, K_BAUD to 921600,
+            K_DEPTH to 12, K_FPS to 30, K_GAMMA to 18, K_BAUD to 921600, K_CAPFPS to 12,
         )
 
         fun int(p: SharedPreferences, key: String) = p.getInt(key, DEFAULTS[key] ?: 0)
@@ -145,6 +147,7 @@ class Config(
             autoStart = p.getBoolean(K_AUTOSTART, true),
             testMode = p.getBoolean(K_TEST, false),
             colorOrder = p.getInt(K_ORDER, 0).coerceIn(0, COLOR_ORDERS.size - 1),
+            captureFps = int(p, K_CAPFPS).coerceIn(2, 30),
         )
     }
 }

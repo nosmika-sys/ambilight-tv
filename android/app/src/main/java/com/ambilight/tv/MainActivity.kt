@@ -181,7 +181,8 @@ class MainActivity : Activity() {
         root.addView(stepper("Suavização", Config.K_SMOOTH, 0, 95, 5, "%"))
         root.addView(stepper("Profundidade da borda", Config.K_DEPTH, 2, 40, 1, "%"))
         root.addView(stepper("Gama (x10)", Config.K_GAMMA, 5, 35, 1))
-        root.addView(stepper("Atualizações por segundo", Config.K_FPS, 5, 60, 5))
+        root.addView(stepper("Capturas da tela por segundo (menos = mais leve)", Config.K_CAPFPS, 2, 30, 2))
+        root.addView(stepper("Atualizações da fita por segundo", Config.K_FPS, 5, 60, 5))
         root.addView(toggleRow("Ignorar barras pretas (filmes)", Config.K_LETTERBOX, true))
 
         root.addView(section("Conexão e inicialização"))
