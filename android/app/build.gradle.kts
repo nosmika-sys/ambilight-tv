@@ -11,8 +11,8 @@ android {
         applicationId = "com.ambilight.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 8
-        versionName = "1.7"
+        versionCode = 9
+        versionName = "1.8"
     }
 
     // Chave fixa guardada como segredo no GitHub (KEYSTORE_B64 / KEYSTORE_PASS).
