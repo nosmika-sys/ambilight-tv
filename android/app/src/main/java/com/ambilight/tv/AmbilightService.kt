@@ -133,27 +133,24 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         val w = CAPTURE_WIDTH
         val h = max(2, ((CAPTURE_WIDTH.toFloat() * metrics.heightPixels / metrics.widthPixels) / 2f).roundToInt() * 2)
 
-        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
         imageReader = reader
+        var lastAnalyze = 0L
         reader.setOnImageAvailableListener({ r ->
+            // Sempre libera o quadro na hora (nunca segura o compositor da TV);
+            // so analisa no ritmo de "Capturas da tela por segundo".
             val image = try { r.acquireLatestImage() } catch (_: Exception) { null } ?: return@setOnImageAvailableListener
             try {
                 val cfg = config ?: return@setOnImageAvailableListener
-                val plane = image.planes[0]
-                target = analyzer.analyze(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride, cfg)
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastAnalyze >= 1000L / cfg.captureFps) {
+                    lastAnalyze = now
+                    val plane = image.planes[0]
+                    target = analyzer.analyze(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride, cfg)
+                }
             } catch (_: Exception) {
             } finally {
                 image.close()
-            }
-            // Limita as capturas: desliga a superficie e religa depois do intervalo.
-            // Sem superficie a TV nao gasta GPU espelhando a tela (alivia muito durante video).
-            val vd = virtualDisplay
-            val cfgNow = config
-            if (vd != null && cfgNow != null && running) {
-                vd.surface = null
-                handler.postDelayed({
-                    if (running) try { virtualDisplay?.surface = reader.surface } catch (_: Exception) { }
-                }, 1000L / cfgNow.captureFps)
             }
         }, handler)
 
