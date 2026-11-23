@@ -317,7 +317,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             minWidth = dp(90)
         }
-        fun idx() = prefs.getInt(Config.K_ORDER, 0).coerceIn(0, Config.COLOR_ORDERS.size - 1)
+        fun idx() = prefs.getInt(Config.K_ORDER, 2).coerceIn(0, Config.COLOR_ORDERS.size - 1)
         fun show() { value.text = Config.COLOR_ORDERS[idx()] }
         fun change(d: Int) {
             val n = Config.COLOR_ORDERS.size

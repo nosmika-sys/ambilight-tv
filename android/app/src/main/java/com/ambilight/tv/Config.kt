@@ -147,7 +147,7 @@ class Config(
             baud = int(p, K_BAUD),
             autoStart = p.getBoolean(K_AUTOSTART, true),
             testMode = p.getBoolean(K_TEST, false),
-            colorOrder = p.getInt(K_ORDER, 0).coerceIn(0, COLOR_ORDERS.size - 1),
+            colorOrder = p.getInt(K_ORDER, 2).coerceIn(0, COLOR_ORDERS.size - 1),
             captureFps = int(p, K_CAPFPS).coerceIn(2, 30),
         )
     }
