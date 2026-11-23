@@ -11,15 +11,31 @@ android {
         applicationId = "com.ambilight.tv"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
+    }
+
+    // Chave fixa guardada como segredo no GitHub (KEYSTORE_B64 / KEYSTORE_PASS).
+    // Todas as versoes saem com a mesma assinatura, senao o Android recusa atualizar.
+    val ksPath = System.getenv("KEYSTORE_PATH")
+    val ksPass = System.getenv("KEYSTORE_PASS")
+    val temChave = ksPath != null && ksPass != null && file(ksPath).exists()
+    signingConfigs {
+        if (temChave) {
+            create("fixa") {
+                storeFile = file(ksPath!!)
+                storePassword = ksPass
+                keyAlias = "ambilight"
+                keyPassword = ksPass
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Assina o release com a chave de debug para facilitar a instalacao na TV
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (temChave) signingConfigs.getByName("fixa")
+                            else signingConfigs.getByName("debug")
         }
     }
     compileOptions {
