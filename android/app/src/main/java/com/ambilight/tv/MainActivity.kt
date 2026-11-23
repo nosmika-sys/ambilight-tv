@@ -114,7 +114,8 @@ class MainActivity : Activity() {
         autoTried = true
         // Se foi aberto pela conexao do ESP32 (ex.: TV ligando), some da frente depois de iniciar
         hideAfterStart = intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED ||
-            intent?.getBooleanExtra(EXTRA_AFTER_UPDATE, false) == true
+            intent?.getBooleanExtra(EXTRA_AFTER_UPDATE, false) == true ||
+            intent?.getBooleanExtra(AmbilightService.EXTRA_DIAG, false) == true
         requestStart()
     }
 
@@ -164,6 +165,7 @@ class MainActivity : Activity() {
             .setAction(AmbilightService.ACTION_START)
             .putExtra(AmbilightService.EXTRA_CODE, resultCode)
             .putExtra(AmbilightService.EXTRA_DATA, data)
+            .putExtra(AmbilightService.EXTRA_DIAG, intent?.getBooleanExtra(AmbilightService.EXTRA_DIAG, false) == true)
         startForegroundService(i)
         AmbilightService.status = "Iniciando…"
         // Ligou sozinho (TV ligando / ESP32 conectado): volta para o que estava na tela

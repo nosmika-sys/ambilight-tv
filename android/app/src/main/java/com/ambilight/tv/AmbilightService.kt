@@ -138,6 +138,19 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         projection = mp
         running = true
         isRunning = true
+        if (intent.getBooleanExtra(EXTRA_DIAG, false)) {
+            status = "Diagnóstico de captura rodando…"
+            val dpi = resources.displayMetrics.densityDpi
+            val file = java.io.File(getExternalFilesDir(null), "diag.txt")
+            Thread({
+                try { CaptureDiag(mp, dpi, file) { running }.run() } catch (e: Exception) {
+                    try { file.appendText("ERRO GERAL ${e.message}\n") } catch (_: Exception) { }
+                }
+                status = "Diagnóstico concluído"
+                stopSelf()
+            }, "ambilight-diag").start()
+            return START_NOT_STICKY
+        }
         startCapture(mp)
         startSender()
         return START_NOT_STICKY
@@ -564,6 +577,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         const val ACTION_STOP = "com.ambilight.tv.STOP"
         const val EXTRA_CODE = "code"
         const val EXTRA_DATA = "data"
+        const val EXTRA_DIAG = "diag"
         private const val CHANNEL = "ambilight"
         private const val NOTIF_ID = 1
         private const val CAPTURE_WIDTH = 128
