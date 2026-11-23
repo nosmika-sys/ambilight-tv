@@ -38,6 +38,7 @@ class Config(
     val testMode: Boolean,
     val colorOrder: Int,   // indice em COLOR_ORDERS: ordem em que R, G e B sao enviados
     val captureFps: Int,   // capturas de tela por segundo (menor = mais leve para a TV)
+    val compatCapture: Boolean, // captura no modo "codificador de video"
 ) {
     val mapping: Mapping = buildMapping()
     val gammaLut: IntArray = IntArray(256) { i ->
@@ -114,6 +115,7 @@ class Config(
         const val K_ORDER = "color_order"
         const val K_CAPFPS = "capture_fps"
         const val K_AUTOUPDATE = "auto_update"
+        const val K_COMPAT = "compat_capture"
 
         const val PREFS = "ambilight"
         /** Ordem dos canais enviados. Corrige a fita sem regravar o ESP32. */
@@ -149,6 +151,7 @@ class Config(
             testMode = p.getBoolean(K_TEST, false),
             colorOrder = p.getInt(K_ORDER, 2).coerceIn(0, COLOR_ORDERS.size - 1),
             captureFps = int(p, K_CAPFPS).coerceIn(2, 30),
+            compatCapture = p.getBoolean(K_COMPAT, true),
         )
     }
 }

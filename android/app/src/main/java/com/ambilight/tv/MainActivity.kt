@@ -241,6 +241,7 @@ class MainActivity : Activity() {
         root.addView(stepper("Capturas da tela por segundo (menos = mais leve)", Config.K_CAPFPS, 2, 30, 2))
         root.addView(stepper("Atualizações da fita por segundo", Config.K_FPS, 5, 60, 5))
         root.addView(toggleRow("Ignorar barras pretas (filmes)", Config.K_LETTERBOX, true))
+        root.addView(toggleRow("Captura compatível com vídeo (reinicie o Ambilight ao mudar)", Config.K_COMPAT, true))
 
         root.addView(section("Conexão e inicialização"))
         root.addView(baudRow())

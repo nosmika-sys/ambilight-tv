@@ -162,7 +162,19 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         val w = CAPTURE_WIDTH
         val h = max(2, ((CAPTURE_WIDTH.toFloat() * metrics.heightPixels / metrics.widthPixels) / 2f).roundToInt() * 2)
 
-        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+        // Modo compativel: declara o buffer como "entrada de codificador de video".
+        // Em varias TVs o hardware so inclui a camada do video quando o destino e um codificador.
+        val compat = config?.compatCapture ?: true
+        val reader = if (compat && Build.VERSION.SDK_INT >= 29) {
+            try {
+                ImageReader.newInstance(
+                    w, h, PixelFormat.RGBA_8888, 3,
+                    android.hardware.HardwareBuffer.USAGE_CPU_READ_OFTEN or android.hardware.HardwareBuffer.USAGE_VIDEO_ENCODE
+                )
+            } catch (_: Exception) {
+                ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+            }
+        } else ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
         imageReader = reader
         var lastAnalyze = 0L
         reader.setOnImageAvailableListener({ r ->
@@ -409,7 +421,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         const val EXTRA_DATA = "data"
         private const val CHANNEL = "ambilight"
         private const val NOTIF_ID = 1
-        private const val CAPTURE_WIDTH = 64
+        private const val CAPTURE_WIDTH = 128
 
         @Volatile var isRunning = false
             private set
