@@ -159,22 +159,22 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         val metrics = DisplayMetrics()
         @Suppress("DEPRECATION")
         dm.getDisplay(Display.DEFAULT_DISPLAY).getRealMetrics(metrics)
+        val compat = config?.compatCapture ?: true
+        if (compat) {
+            try {
+                startCodecCapture(mp, metrics)
+                return
+            } catch (e: Exception) {
+                // Codificador indisponivel: cai para a captura normal
+                try { virtualDisplay?.release() } catch (_: Exception) { }
+                try { encoder?.release() } catch (_: Exception) { }
+                encoder = null
+            }
+        }
+
         val w = CAPTURE_WIDTH
         val h = max(2, ((CAPTURE_WIDTH.toFloat() * metrics.heightPixels / metrics.widthPixels) / 2f).roundToInt() * 2)
-
-        // Modo compativel: declara o buffer como "entrada de codificador de video".
-        // Em varias TVs o hardware so inclui a camada do video quando o destino e um codificador.
-        val compat = config?.compatCapture ?: true
-        val reader = if (compat && Build.VERSION.SDK_INT >= 29) {
-            try {
-                ImageReader.newInstance(
-                    w, h, PixelFormat.RGBA_8888, 3,
-                    android.hardware.HardwareBuffer.USAGE_CPU_READ_OFTEN or android.hardware.HardwareBuffer.USAGE_VIDEO_ENCODE
-                )
-            } catch (_: Exception) {
-                ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
-            }
-        } else ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
+        val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 3)
         imageReader = reader
         var lastAnalyze = 0L
         reader.setOnImageAvailableListener({ r ->
@@ -187,12 +187,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
                 if (now - lastAnalyze >= 1000L / cfg.captureFps) {
                     lastAnalyze = now
                     val plane = image.planes[0]
-                    target = analyzer.analyze(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride, cfg)
-                    frames++
-                    if (now - lastDebug > 3000) {
-                        lastDebug = now
-                        saveDebug(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride)
-                    }
+                    onFrame(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride, cfg, now)
                 }
             } catch (_: Exception) {
             } finally {
@@ -205,6 +200,153 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             reader.surface, null, handler
         )
+    }
+
+    private fun onFrame(buf: java.nio.ByteBuffer, w: Int, h: Int, ps: Int, rs: Int, cfg: Config, now: Long) {
+        target = analyzer.analyze(buf, w, h, ps, rs, cfg)
+        frames++
+        if (now - lastDebug > 3000) {
+            lastDebug = now
+            saveDebug(buf, w, h, ps, rs)
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Captura "Codec": tela -> codificador H.264 -> decodificador -> pixels.
+    // Em TVs TCL/Amlogic/MediaTek o hardware so mistura a camada do video
+    // quando o destino da captura e um codificador de video de verdade.
+    // ------------------------------------------------------------------
+    @Volatile private var codecThread: Thread? = null
+    private var encoder: android.media.MediaCodec? = null
+    private var decoder: android.media.MediaCodec? = null
+
+    private fun startCodecCapture(mp: MediaProjection, metrics: DisplayMetrics) {
+        val w = CODEC_W
+        val h = CODEC_H
+        val enc = android.media.MediaCodec.createEncoderByType("video/avc")
+        val fmt = android.media.MediaFormat.createVideoFormat("video/avc", w, h).apply {
+            setInteger(android.media.MediaFormat.KEY_COLOR_FORMAT,
+                android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(android.media.MediaFormat.KEY_BIT_RATE, 1_500_000)
+            setInteger(android.media.MediaFormat.KEY_FRAME_RATE, 30)
+            setInteger(android.media.MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            // Repete o ultimo quadro em telas paradas, para o fluxo nunca travar
+            setLong(android.media.MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 200_000L)
+        }
+        enc.configure(fmt, null, null, android.media.MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val input = enc.createInputSurface()
+        enc.start()
+        encoder = enc
+
+        virtualDisplay = mp.createVirtualDisplay(
+            "ambilight", w, h, metrics.densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            input, null, null
+        )
+        codecThread = Thread({ codecLoop(enc, w, h) }, "ambilight-codec").also { it.start() }
+    }
+
+    private fun codecLoop(enc: android.media.MediaCodec, w: Int, h: Int) {
+        val info = android.media.MediaCodec.BufferInfo()
+        val dinfo = android.media.MediaCodec.BufferInfo()
+        var dec: android.media.MediaCodec? = null
+        var rgba = java.nio.ByteBuffer.allocateDirect(w * h * 4)
+        var lastAnalyze = 0L
+        try {
+            while (running) {
+                val idx = enc.dequeueOutputBuffer(info, 20_000)
+                if (idx == android.media.MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    val outFmt = enc.outputFormat
+                    outFmt.setInteger(android.media.MediaFormat.KEY_COLOR_FORMAT,
+                        android.media.MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
+                    val d = android.media.MediaCodec.createDecoderByType("video/avc")
+                    d.configure(outFmt, null, null, 0)
+                    d.start()
+                    dec = d
+                    decoder = d
+                } else if (idx >= 0) {
+                    val d = dec
+                    val isConfig = (info.flags and android.media.MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+                    if (d != null && !isConfig && info.size > 0) {
+                        val din = d.dequeueInputBuffer(20_000)
+                        if (din >= 0) {
+                            val src = enc.getOutputBuffer(idx)!!
+                            src.position(info.offset)
+                            src.limit(info.offset + info.size)
+                            val dst = d.getInputBuffer(din)!!
+                            dst.clear()
+                            dst.put(src)
+                            d.queueInputBuffer(din, 0, info.size, info.presentationTimeUs, 0)
+                        }
+                    }
+                    enc.releaseOutputBuffer(idx, false)
+                }
+                // Esvazia o decodificador
+                val d = dec ?: continue
+                while (true) {
+                    val dout = d.dequeueOutputBuffer(dinfo, 0)
+                    if (dout < 0) break
+                    val cfg = config
+                    val now = SystemClock.elapsedRealtime()
+                    if (cfg != null && now - lastAnalyze >= 1000L / cfg.captureFps) {
+                        lastAnalyze = now
+                        val img = try { d.getOutputImage(dout) } catch (_: Exception) { null }
+                        if (img != null) {
+                            try {
+                                val iw = img.width
+                                val ih = img.height
+                                if (rgba.capacity() < iw * ih * 4) rgba = java.nio.ByteBuffer.allocateDirect(iw * ih * 4)
+                                yuvToRgba(img, rgba, iw, ih)
+                                onFrame(rgba, iw, ih, 4, iw * 4, cfg, now)
+                            } catch (_: Exception) {
+                            } finally {
+                                img.close()
+                            }
+                        }
+                    }
+                    d.releaseOutputBuffer(dout, false)
+                }
+            }
+        } catch (e: Exception) {
+            status = "Erro na captura: ${e.message}"
+        } finally {
+            try { dec?.stop() } catch (_: Exception) { }
+            try { dec?.release() } catch (_: Exception) { }
+        }
+    }
+
+    /** Converte YUV_420_888 (saida do decodificador) para RGBA. */
+    private fun yuvToRgba(img: android.media.Image, out: java.nio.ByteBuffer, w: Int, h: Int) {
+        val yP = img.planes[0]
+        val uP = img.planes[1]
+        val vP = img.planes[2]
+        val yB = yP.buffer
+        val uB = uP.buffer
+        val vB = vP.buffer
+        val yRs = yP.rowStride
+        val yPs = yP.pixelStride
+        val uRs = uP.rowStride
+        val uPs = uP.pixelStride
+        val vRs = vP.rowStride
+        val vPs = vP.pixelStride
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val yy = (yB.get(y * yRs + x * yPs).toInt() and 0xFF) - 16
+                val cx = x / 2
+                val cy = y / 2
+                val u = (uB.get(cy * uRs + cx * uPs).toInt() and 0xFF) - 128
+                val v = (vB.get(cy * vRs + cx * vPs).toInt() and 0xFF) - 128
+                val c = 1.164f * yy
+                val r = (c + 1.596f * v).toInt().coerceIn(0, 255)
+                val g = (c - 0.392f * u - 0.813f * v).toInt().coerceIn(0, 255)
+                val b = (c + 2.017f * u).toInt().coerceIn(0, 255)
+                val o = (y * w + x) * 4
+                out.put(o, r.toByte())
+                out.put(o + 1, g.toByte())
+                out.put(o + 2, b.toByte())
+                out.put(o + 3, 0xFF.toByte())
+            }
+        }
     }
 
     private fun startSender() {
@@ -400,6 +542,9 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         isRunning = false
         try { senderThread?.join(1000) } catch (_: Exception) { }
         try { virtualDisplay?.release() } catch (_: Exception) { }
+        try { codecThread?.join(500) } catch (_: Exception) { }
+        try { encoder?.stop() } catch (_: Exception) { }
+        try { encoder?.release() } catch (_: Exception) { }
         try { imageReader?.close() } catch (_: Exception) { }
         try { projection?.stop() } catch (_: Exception) { }
         captureThread?.quitSafely()
@@ -422,6 +567,8 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
         private const val CHANNEL = "ambilight"
         private const val NOTIF_ID = 1
         private const val CAPTURE_WIDTH = 128
+        private const val CODEC_W = 320
+        private const val CODEC_H = 176
 
         @Volatile var isRunning = false
             private set
