@@ -36,6 +36,7 @@ class Config(
     val baud: Int,
     val autoStart: Boolean,
     val testMode: Boolean,
+    val colorOrder: Int,   // indice em COLOR_ORDERS: ordem em que R, G e B sao enviados
 ) {
     val mapping: Mapping = buildMapping()
     val gammaLut: IntArray = IntArray(256) { i ->
@@ -109,8 +110,11 @@ class Config(
         const val K_BAUD = "baud"
         const val K_AUTOSTART = "autostart"
         const val K_TEST = "test_mode"
+        const val K_ORDER = "color_order"
 
         const val PREFS = "ambilight"
+        /** Ordem dos canais enviados. Corrige a fita sem regravar o ESP32. */
+        val COLOR_ORDERS = arrayOf("RGB", "RBG", "GRB", "GBR", "BRG", "BGR")
         val BAUDS = intArrayOf(115200, 230400, 460800, 500000, 921600, 1000000, 2000000)
 
         /** Padrao pensado para TV de 50" com fita de 60 LEDs/m */
@@ -140,6 +144,7 @@ class Config(
             baud = int(p, K_BAUD),
             autoStart = p.getBoolean(K_AUTOSTART, true),
             testMode = p.getBoolean(K_TEST, false),
+            colorOrder = p.getInt(K_ORDER, 0).coerceIn(0, COLOR_ORDERS.size - 1),
         )
     }
 }

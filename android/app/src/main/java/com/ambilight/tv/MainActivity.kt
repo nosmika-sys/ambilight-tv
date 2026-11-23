@@ -172,6 +172,7 @@ class MainActivity : Activity() {
         root.addView(totalText)
         root.addView(stepper("Deslocamento do início", Config.K_OFFSET, -300, 300, 1))
         root.addView(toggleRow("Inverter sentido", Config.K_REVERSE, false))
+        root.addView(orderRow())
         root.addView(toggleRow("Modo teste (esq. vermelho, topo verde, dir. azul, base branca)", Config.K_TEST, false))
 
         root.addView(section("Imagem"))
@@ -246,6 +247,28 @@ class MainActivity : Activity() {
             isChecked = prefs.getBoolean(key, def)
             setOnCheckedChangeListener { _, checked -> prefs.edit().putBoolean(key, checked).apply() }
         })
+        return r
+    }
+
+    private fun orderRow(): View {
+        val r = row("Ordem das cores (troque se o modo teste errar as cores)")
+        val value = TextView(this).apply {
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            minWidth = dp(90)
+        }
+        fun idx() = prefs.getInt(Config.K_ORDER, 0).coerceIn(0, Config.COLOR_ORDERS.size - 1)
+        fun show() { value.text = Config.COLOR_ORDERS[idx()] }
+        fun change(d: Int) {
+            val n = Config.COLOR_ORDERS.size
+            prefs.edit().putInt(Config.K_ORDER, (idx() + d + n) % n).apply()
+            show()
+        }
+        r.addView(Button(this).apply { text = "−"; textSize = 20f; setOnClickListener { change(-1) } })
+        r.addView(value)
+        r.addView(Button(this).apply { text = "+"; textSize = 20f; setOnClickListener { change(1) } })
+        show()
         return r
     }
 

@@ -273,9 +273,21 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
             bi = (bi * bright).toInt()
             // Corta tons quase pretos para nao ficar piscando em cenas escuras
             if (max(ri, max(gi, bi)) < 3) { ri = 0; gi = 0; bi = 0 }
-            frame[6 + i * 3] = ri.toByte()
-            frame[7 + i * 3] = gi.toByte()
-            frame[8 + i * 3] = bi.toByte()
+            putColor(frame, i, ri, gi, bi, cfg.colorOrder)
+        }
+    }
+
+    /** Escreve o LED i no quadro, trocando os canais conforme a "Ordem das cores" do app. */
+    private fun putColor(frame: ByteArray, i: Int, r: Int, g: Int, b: Int, order: Int) {
+        val o = 6 + i * 3
+        val name = Config.COLOR_ORDERS[order]
+        for (k in 0 until 3) {
+            val v = when (name[k]) {
+                'R' -> r
+                'G' -> g
+                else -> b
+            }
+            frame[o + k] = v.toByte()
         }
     }
 
@@ -297,9 +309,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
             if (i == 0) {
                 if (blink) { r = level; g = 0; b = level } else { r = 0; g = 0; b = 0 }
             }
-            frame[6 + i * 3] = r.toByte()
-            frame[7 + i * 3] = g.toByte()
-            frame[8 + i * 3] = b.toByte()
+            putColor(frame, i, r, g, b, cfg.colorOrder)
         }
     }
 
