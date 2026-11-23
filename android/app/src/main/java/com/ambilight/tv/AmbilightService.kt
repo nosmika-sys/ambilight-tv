@@ -49,6 +49,35 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
     private var captureThread: HandlerThread? = null
     private var senderThread: Thread? = null
     private val analyzer = ScreenAnalyzer()
+    @Volatile private var frames = 0L
+    @Volatile private var sentFrames = 0L
+    private var lastDebug = 0L
+
+    /** Diagnostico: salva o ultimo quadro capturado e um resumo em arquivos (lidos via ADB). */
+    private fun saveDebug(buf: java.nio.ByteBuffer, w: Int, h: Int, ps: Int, rs: Int) {
+        try {
+            val dir = getExternalFilesDir(null) ?: return
+            val px = IntArray(w * h)
+            var sum = 0L
+            for (y in 0 until h) for (x in 0 until w) {
+                val i = y * rs + x * ps
+                val r = buf.get(i).toInt() and 0xFF
+                val g = buf.get(i + 1).toInt() and 0xFF
+                val b = buf.get(i + 2).toInt() and 0xFF
+                sum += r + g + b
+                px[y * w + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
+            val bmp = android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.ARGB_8888)
+            java.io.File(dir, "frame.png").outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            val t = target
+            val sample = (0 until minOf(6, t.size / 3)).joinToString(" ") { "(${t[it*3].toInt()},${t[it*3+1].toInt()},${t[it*3+2].toInt()})" }
+            java.io.File(dir, "debug.txt").writeText(
+                "time=${System.currentTimeMillis()} status=$status usbOpen=${link.isOpen}\n" +
+                "capturedFrames=$frames sentFrames=$sentFrames size=${w}x$h avgBrightness=${sum / (w * h * 3)}\n" +
+                "leds=${config?.mapping?.count} first=$sample\n"
+            )
+        } catch (_: Exception) { }
+    }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -147,6 +176,11 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
                     lastAnalyze = now
                     val plane = image.planes[0]
                     target = analyzer.analyze(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride, cfg)
+                    frames++
+                    if (now - lastDebug > 3000) {
+                        lastDebug = now
+                        saveDebug(plane.buffer, image.width, image.height, plane.pixelStride, plane.rowStride)
+                    }
                 }
             } catch (_: Exception) {
             } finally {
@@ -223,7 +257,7 @@ class AmbilightService : Service(), SharedPreferences.OnSharedPreferenceChangeLi
             }
             writeHeader(frame, n)
 
-            if (!link.write(frame)) {
+            if (link.write(frame)) sentFrames++ else {
                 status = "ESP32 desconectado, tentando de novo…"
                 nextOpenAttempt = SystemClock.elapsedRealtime() + 1000
                 continue
