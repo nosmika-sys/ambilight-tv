@@ -31,11 +31,15 @@ class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private var autoTried = false
     private var hideAfterStart = false
+    private lateinit var updateText: TextView
+    private lateinit var updateButton: Button
+    private var pendingRelease: Updater.Release? = null
 
     private val refresher = object : Runnable {
         override fun run() {
             statusText.text = if (AmbilightService.isRunning) "● ${AmbilightService.status}" else "○ ${AmbilightService.status}"
             startButton.text = if (AmbilightService.isRunning) "Parar Ambilight" else "Iniciar Ambilight"
+            if (Updater.status.isNotEmpty()) updateText.text = Updater.status
             ui.postDelayed(this, 500)
         }
     }
@@ -44,7 +48,47 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences(Config.PREFS, MODE_PRIVATE)
         setContentView(buildUi())
-        maybeAutoStart()
+        checkUpdateThenStart()
+    }
+
+    /** Confere atualizacao no GitHub; se nao houver (ou sem internet), segue o inicio normal. */
+    private fun checkUpdateThenStart() {
+        updateText.text = "Versão ${Updater.currentVersion(this)} · procurando atualização…"
+        Thread {
+            val rel = try { Updater.check(this) } catch (_: Exception) { null }
+            ui.post {
+                if (rel == null) {
+                    updateText.text = "Versão ${Updater.currentVersion(this)} · atualizado"
+                    maybeAutoStart()
+                    return@post
+                }
+                pendingRelease = rel
+                updateButton.visibility = View.VISIBLE
+                updateButton.text = "Atualizar para ${rel.version}"
+                val auto = prefs.getBoolean(Config.K_AUTOUPDATE, true)
+                if (auto && !AmbilightService.isRunning && Updater.canInstall(this)) {
+                    installUpdate()
+                } else {
+                    updateText.text = if (Updater.canInstall(this))
+                        "Versão ${rel.version} disponível"
+                    else "Versão ${rel.version} disponível · clique para permitir atualizações"
+                    maybeAutoStart()
+                }
+            }
+        }.start()
+    }
+
+    private fun installUpdate() {
+        val rel = pendingRelease ?: return
+        if (!Updater.canInstall(this)) {
+            Updater.askInstallPermission(this)
+            return
+        }
+        if (AmbilightService.isRunning) {
+            startService(Intent(this, AmbilightService::class.java).setAction(AmbilightService.ACTION_STOP))
+        }
+        updateButton.isEnabled = false
+        Thread { Updater.downloadAndInstall(this, rel) }.start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -69,7 +113,8 @@ class MainActivity : Activity() {
         if (!prefs.getBoolean(Config.K_AUTOSTART, true)) return
         autoTried = true
         // Se foi aberto pela conexao do ESP32 (ex.: TV ligando), some da frente depois de iniciar
-        hideAfterStart = intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED
+        hideAfterStart = intent?.action == UsbManager.ACTION_USB_DEVICE_ATTACHED ||
+            intent?.getBooleanExtra(EXTRA_AFTER_UPDATE, false) == true
         requestStart()
     }
 
@@ -155,7 +200,19 @@ class MainActivity : Activity() {
             setOnClickListener { toggle() }
         }
         buttons.addView(startButton)
+        updateButton = Button(this).apply {
+            textSize = 18f
+            visibility = View.GONE
+            setOnClickListener { installUpdate() }
+        }
+        buttons.addView(updateButton)
         root.addView(buttons)
+        updateText = TextView(this).apply {
+            textSize = 14f
+            setTextColor(Color.GRAY)
+            setPadding(0, dp(6), 0, 0)
+        }
+        root.addView(updateText)
 
         totalText = TextView(this).apply {
             textSize = 16f
@@ -188,6 +245,7 @@ class MainActivity : Activity() {
         root.addView(section("Conexão e inicialização"))
         root.addView(baudRow())
         root.addView(toggleRow("Iniciar sozinho ao abrir / ao conectar o ESP32", Config.K_AUTOSTART, true))
+        root.addView(toggleRow("Atualizar o app sozinho (pelo GitHub)", Config.K_AUTOUPDATE, true))
 
         root.addView(TextView(this).apply {
             textSize = 14f
@@ -306,5 +364,6 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_CAPTURE = 10
         private const val REQ_NOTIF = 11
+        const val EXTRA_AFTER_UPDATE = "after_update"
     }
 }

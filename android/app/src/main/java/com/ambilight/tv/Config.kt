@@ -113,6 +113,7 @@ class Config(
         const val K_TEST = "test_mode"
         const val K_ORDER = "color_order"
         const val K_CAPFPS = "capture_fps"
+        const val K_AUTOUPDATE = "auto_update"
 
         const val PREFS = "ambilight"
         /** Ordem dos canais enviados. Corrige a fita sem regravar o ESP32. */
